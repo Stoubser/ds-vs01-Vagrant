@@ -1,0 +1,62 @@
+version: "3.3"
+services:
+  gitlab:
+    image: gitlab/gitlab-ee:latest
+    container_name: gitlab
+    restart: always
+    hostname: 'git.it-tf.ch'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+              external_url 'https://git.it-tf.ch/' # <== gitlab url
+              nginx['listen_https'] = false
+              nginx['listen_port'] = 80
+              gitlab_rails['ldap_enabled'] = true # <== enable ldap auth
+              gitlab_rails['ldap_host'] = $AD_DOMAIN_IP # <== ip of domain controller
+              gitlab_rails['ldap_port'] = 389 
+              gitlab_rails['ldap_uid'] = 'sAMAccountName'
+              gitlab_rails['ldap_method'] = 'plain' # <== encryption ssl or plain
+              gitlab_rails['ldap_bind_dn'] = $LDAP_BIND_DN 
+              gitlab_rails['ldap_password'] = $LDAP_SECRET 
+              gitlab_rails['ldap_allow_username_or_email_login'] = true
+              gitlab_rails['ldap_base'] = $LDAP_BASE
+              gitlab_rails['gitlab_shell_ssh_port'] = 22
+              gitlab_rails['time_zone'] = 'Europe/Zurich'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.gitlab_insecure.rule=Host(`git.it-tf.ch`)
+      - traefik.http.routers.gitlab_insecure.entrypoints=web
+      - traefik.http.routers.gitlab_insecure.middlewares=redirect@file
+
+      - traefik.docker.network=traefik-proxy
+
+      - traefik.http.routers.gitlab.entrypoints=web-secure
+      - traefik.http.routers.gitlab.rule=Host(`git.it-tf.ch`)
+      - traefik.http.routers.gitlab.tls.certresolver=letsencrypt
+      - traefik.http.services.gitlab.loadbalancer.server.port=80
+
+      - traefik.tcp.routers.gitlab-ssh.rule=HostSNI(`*`)
+      - traefik.tcp.routers.gitlab-ssh.entrypoints=ssh
+      - traefik.tcp.routers.gitlab-ssh.service=gitlab-ssh-svc
+      - traefik.tcp.services.gitlab-ssh-svc.loadbalancer.server.port=22
+    volumes:
+      - ./config:/etc/gitlab
+      - ./logs:/var/log/gitlab
+      - ./data:/var/opt/gitlab
+    networks:
+      - traefik-proxy
+      - default
+  gitlab-runner:
+    image: gitlab/gitlab-runner:alpine
+    restart: unless-stopped
+    depends_on:
+      - gitlab
+    volumes: 
+      - ./gitlab-runner:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/dockeradmin/backups/gitlab:/home/dockeradmin/backups/gitlab
+    networks:
+      - default
+
+networks:
+  traefik-proxy:
+    external: true

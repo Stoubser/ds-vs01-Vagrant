@@ -1,0 +1,74 @@
+version: '3'
+services: 
+  ldap_sync:
+    image: vividboarder/bitwarden_rs_ldap
+    volumes:
+      - ./config.toml:/config.toml
+    environment:
+      RUST_BACKTRACE: 1
+      CONFIG_PATH: /config.toml
+    restart: always
+    depends_on:
+      - ldap
+      - ldap_admin
+      - bitwarden_rs
+    networks:
+      - default
+
+  ldap:
+    image: osixia/openldap
+    ports:
+      - 389:389
+      - 636:636
+    volumes:
+      - /var/lib/ldap
+      - /etc/ldap/sldap.d
+    environment:
+      LDAP_READONLY_USER: 'true'
+      LDAP_READONLY_USER_USERNAME: readonly
+      LDAP_READONLY_USER_PASSWORD: readonly
+    networks:
+      - default
+
+  ldap_admin:
+    image: osixia/phpldapadmin
+    ports:
+      - 8001:80
+    environment:
+      PHPLDAPADMIN_HTTPS: 'false'
+      PHPLDAPADMIN_LDAP_HOSTS: ldap
+    networks:
+      - default
+ 
+  bitwarden_rs:
+    image: bitwardenrs/server:latest
+    container_name: bitwardenrs
+    # user: 1000:1000
+    restart: always
+    volumes:
+      - ./bw-data/:/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.port=8080
+      - traefik.backend=bitwardenrs
+      - traefik.http.routers.bitwardenrs_insecure.rule=Host(`bitwarden.it-tf.ch`)
+      - traefik.http.routers.bitwardenrs_insecure.entrypoints=web
+      - traefik.http.routers.bitwardenrs_insecure.middlewares=redirect@file
+
+      - traefik.http.routers.bitwardenrs.entrypoints=web-secure
+      - traefik.http.routers.bitwardenrs.rule=Host(`bitwarden.it-tf.ch`)
+      - traefik.http.routers.bitwardenrs.tls.certresolver=letsencrypt
+      - traefik.http.services.bitwardenrs.loadbalancer.server.port=8080
+    env_file:
+      - ./.env
+    environment:
+      - ROCKET_PORT=8080
+      - ADMIN_TOKEN=$ADMIN_TOKEN
+    networks:
+      - traefik-proxy
+      - default
+
+networks:
+  traefik-proxy:
+    external: true

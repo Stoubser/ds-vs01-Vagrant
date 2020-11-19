@@ -1,0 +1,41 @@
+version: "3.3"
+
+services:
+  traefik:
+    image: traefik:latest
+    restart: always
+    container_name: traefik
+    command:
+      - --log.level=DEBUG
+      - --accesslog=true   
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.entrypoints=web
+      - traefik.http.routers.traefik.rule=Host(`traefik.it-tf.ch`)
+      - traefik.http.routers.traefik.middlewares=redirect@file
+
+      - traefik.http.routers.traefik_secure.entrypoints=web-secure
+      - traefik.http.routers.traefik_secure.rule=Host(`traefik.it-tf.ch`)
+      - traefik.http.routers.traefik_secure.middlewares=auth
+      - traefik.http.middlewares.auth.basicauth.users=$TRAEFIK_USER:$TRAEFIK_PASSWORD_HASH
+
+      - traefik.http.routers.traefik_secure.tls.certresolver=letsencrypt
+      - traefik.http.routers.traefik_secure.service=api@internal
+      - traefik.docker.network=traefik-proxy
+    ports:
+      - "22:22"
+      - "80:80" 
+      - "443:443"
+      - "8080:8080" #<== dashboard port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # <== Volume for docker admin
+      - ./traefik.toml:/etc/traefik/traefik.toml
+      - ./acme.json:/acme.json
+      - ./provider_file.toml:/etc/traefik/provider_file.toml
+
+    networks:
+      - default
+      - traefik-proxy
+networks:
+  traefik-proxy:
+    external: true

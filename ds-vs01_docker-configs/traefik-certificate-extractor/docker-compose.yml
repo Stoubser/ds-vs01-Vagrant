@@ -1,0 +1,11 @@
+version: '3.7'
+services:
+  traefik-certs:
+    image: redskyer/traefik_cert-extractor
+    volumes:
+      - ../traefik/:/app/data:ro
+      - ./certs:/app/certs:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - Passphrase=my_passphrase
+    restart: always
